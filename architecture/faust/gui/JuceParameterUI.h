@@ -80,9 +80,42 @@ struct FaustPlugInAudioParameterFloat : public juce::AudioParameterFloat, public
     
 };
 
-// A class to create AudioProcessorParameter objects for each zone
+// included as a link to Foley's GUI Magic Combo Boxes from slider[style:menu]
+struct FaustPlugInAudioParameterChoice : public juce::AudioParameterChoice, public uiOwnedItem {
+    // @param parameterID         The parameter ID to use
+    //    @param parameterName       The parameter name to use
+    //    @param choices             The set of choices to use
+    //    @param defaultItemIndex    The index of the default choice
+    FaustPlugInAudioParameterChoice(GUI* gui, FAUSTFLOAT* zone, const std::string& path, const std::string& label, juce::StringArray& options, int init)
+        :juce::AudioParameterChoice(path, label, options, int(init)), uiOwnedItem(gui, zone)
+    {}
 
+    virtual ~FaustPlugInAudioParameterChoice() {}
+
+    void reflectZone() override
+    {
+        FAUSTFLOAT v = *fZone;
+   //     fCache = v;
+   //     if (v >= range.start && v <= range.end) {
+   //         setValueNotifyingHost(range.convertTo0to1(float(v)));
+   //     }
+    }
+
+    virtual void setValue(float newValue) override
+    {
+  //      modifyZone(FAUSTFLOAT(range.convertFrom0to1(newValue)));
+    }
+
+};
+
+// A class to create AudioProcessorParameter objects for each zone
+#ifdef MAGIC_COMBO_BOX
+class JuceParameterUI : public GUI, public MetaDataUI, public PathBuilder {
+#else
 class JuceParameterUI : public GUI, public PathBuilder {
+#endif
+
+
     
     private:
         
@@ -127,7 +160,39 @@ class JuceParameterUI : public GUI, public PathBuilder {
         
         virtual void addVerticalSlider(const char* label, FAUSTFLOAT* zone, FAUSTFLOAT init, FAUSTFLOAT min, FAUSTFLOAT max, FAUSTFLOAT step)
         {
-            fProcessor->addParameter(new FaustPlugInAudioParameterFloat(this, zone, buildPath(label), label, init, min, max, step));
+            if (isMenu(zone)) { 
+#ifdef MAGIC_COMBO_BOX
+                // get the Faust style:menu string and pull off the labels into a string array.
+                // the values will be ignored by PGM.  In use it will generate
+				// values 0 to n - 1 corresponding to the keys in order.
+                std::string poobert = fMenuDescription[zone];
+                std::size_t beginQuote = poobert.find("\'");
+                std::size_t endQuote = poobert.find("\'", beginQuote + 1);
+                std::string menuOption = poobert.substr(beginQuote + 1, endQuote - beginQuote - 1);
+                juce::StringArray selectionList(menuOption);
+
+                while (TRUE)
+                {
+                    beginQuote = poobert.find("\'", endQuote + 1);
+                    if (beginQuote == std::string::npos)
+                        break;
+                    endQuote = poobert.find("\'", beginQuote + 1);
+                    if (endQuote == std::string::npos)
+                        break;
+                    menuOption = poobert.substr(beginQuote + 1, endQuote - beginQuote - 1);
+                    selectionList.add(menuOption);
+                }
+
+                fProcessor->addParameter(new FaustPlugInAudioParameterChoice(this, zone, buildPath(label), label, selectionList, init));
+//                fProcessor->addParameterListener(label, this);
+#else
+                fProcessor->addParameter(new FaustPlugInAudioParameterFloat(this, zone, buildPath(label), label, init, min, max, step));
+#endif
+            }
+            else
+            {
+                fProcessor->addParameter(new FaustPlugInAudioParameterFloat(this, zone, buildPath(label), label, init, min, max, step));
+            };
         }
         
         virtual void addHorizontalSlider(const char* label, FAUSTFLOAT* zone, FAUSTFLOAT init, FAUSTFLOAT min, FAUSTFLOAT max, FAUSTFLOAT step)
@@ -151,6 +216,14 @@ class JuceParameterUI : public GUI, public PathBuilder {
         {
             fProcessor->addParameter(new FaustPlugInAudioParameterFloat(this, zone, buildPath(label), label, 0, min, max, 0));
         }
+		
+#ifdef MAGIC_COMBO_BOX
+        /** Declare a metadata. */
+        virtual void declare(FAUSTFLOAT* zone, const char* key, const char* value) override
+        {
+            MetaDataUI::declare(zone, key, value);
+        }
+#endif     		
     
 };
 
